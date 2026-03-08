@@ -1,15 +1,560 @@
-%! Author = jvalentin
-%! Date = 07.03.26
+\documentclass{article}
 
-% Preamble
-\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb}
+\usepackage[T1]{fontenc}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{array}
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=blue,      
+    urlcolor=blue,
+    }
 
-% Packages
-\usepackage{amsmath}
+\title{Apps Release Regression Governance Framework (SLO/CFU)}
+\author{Jansel Valentin}
+\date{March 8, 2026}
 
-% Document
+\newcommand{\CFU}{\mathrm{CFU}}
+\newcommand{\MAU}{\mathrm{MAU}}
+\newcommand{\EB}{\mathrm{EB}}
+\newcommand{\E}{\mathrm{E}}
+\newcommand{\pp}{\text{pp}}
+\newcommand{\dhalt}{\delta_{\text{halt}}}
+\newcommand{\dhold}{\delta_{\text{hold}}}
+
 \begin{document}
 
+\maketitle
 
+\begin{abstract}
+This note defines a staged-rollout governance framework for mobile app releases using 
+crash-free users (CFU), error-budget accounting, and minimum-exposure gates.
+
+The intent is simple: release decisions should not depend on gut feel.
+Every threshold should be defensible through one of three lenses:
+
+\begin{itemize}[leftmargin=1.4em]
+    \item \textbf{Error-budget math}: how much of the monthly budget would this regression consume if it reached 100\% rollout?
+    \item \textbf{Statistical detectability}: do we have enough exposure to trust the signal?
+    \item \textbf{Time to budget depletion}: if this regression continues, how quickly would it consume the monthly budget?
+\end{itemize}
+
+\end{abstract}
+
+\section*{Lounge app baseline}
+
+\begin{itemize}[leftmargin=1.4em]
+    \item \textbf{Monthly active user ($\MAU$)}: \(2{,}000{,}000\)
+    \item \textbf{Current baseline CFU}: \(\approx 99.1\%\) \\
+    \emph{Context only; this is not what defines the release thresholds.}
+    \item \textbf{SLO target}: \(S = 99\%\)
+    \item \textbf{SLO window}: \(W = 30\) days
+    \item \textbf{Release gate window}: \(w = 6\) hours
+\end{itemize}
+
+\section{Core definitions}
+
+Let $U$ be the number of unique users active in a window and $C$ the number of unique users who experienced at least one crash in that same window.
+
+\paragraph{Crash-free users CFU.}
+
+\[
+\CFU = 1 - \frac{C}{U}
+\]
+
+\paragraph{Crash rate / error rate.}
+\[
+p = 1 - \CFU
+\]
+
+\paragraph{Allowed error rate from the SLO.}
+For an SLO target $\S$
+\[
+\E = 1 - S
+\]
+
+For $S = 99\%$
+\[
+\E = 1\% = 0.01
+\]
+
+\paragraph{Monthly error budget in crashed users.}
+\[
+\EB = \E \cdot \MAU
+\]
+
+\paragraph{Remaining monthly error budget in crashed users.}
+If the current CFU over the SLO window is $\CFU_{\mathrm{current}}$, then
+\[
+\EB_{\mathrm{rem}} = 
+\max(0,\ \E - (1 - \CFU_{\mathrm{current}})) \cdot \MAU
+\]
+
+\paragraph{Release-induced regression.} 
+Let $p_{\mathrm{new}}$ be the crash rate of the new version and $p_{\mathrm{control}}$ the crash rate of the control cohort (usually previous versions), measured over the \emph{same gate window}. 
+Then:
+\[
+\delta = p_{\mathrm{new}} - p_{\mathrm{control}}
+\]
+
+A positive $\delta$ means the release is worse than control.
+Throughout this note, $\delta$ is expressed in \emph{percentage points} $(\pp)$, not percent.
+
+\section{Governance principle}
+
+\paragraph{Governance rule.}
+A single release should not be allowed to consume more than a fixed fraction $\alpha$ of the \emph{total monthly error budget} if it were to reach 100\% rollout and the observed regression persisted.
+
+We choose:
+\[
+\alpha = 20\%
+\]
+
+\paragraph{Projected full-rollout budget share.}
+If a release shows an incremental regression $\delta$, then at 100\% rollout its projected monthly excess crashed users would be:
+\[
+\delta \cdot \MAU
+\]
+
+As a fraction of the monthly error budget: 
+\[
+\text{BudgetShare}
+=
+\frac{\delta \cdot \MAU}{\E \cdot \MAU}
+=
+\frac{\delta}{\E}
+\]
+
+Also:
+\[
+\delta = \text{BudgetShare} \cdot \E
+\]
+
+Therefore the maximum release-induced regression allowed by the \textbf{governance rule} is:
+\[
+\delta_{\max} = \alpha \cdot \E
+\]
+
+From which it follows:
+\[
+\text{BudgetShare} < \alpha
+\]
+
+For $S = 99\%$, $\E = 1\%$, so:
+\[
+\delta_{\max} = 20\% \cdot \E = 0.20\pp
+\]
+
+This is the core \textbf{policy ceiling}:
+\[
+\delta \ge 0.20\pp \quad \Rightarrow \quad \text{release is not acceptable}
+\]
+
+\paragraph{Important clarification.}
+The ceiling $0.20\pp$ is derived from:
+\begin{itemize}[leftmargin=1.4em]
+    \item the SLO target $\S$, through $\E = 1 - \S$, and
+    \item the governance choice $\alpha$.
+\end{itemize}
+
+so:
+
+\begin{itemize}[leftmargin=1.4em]
+    \item changing $\MAU$ \textbf{does not} change the threshold in $\pp$,
+    \item changing the SLO \textbf{does} change the threshold in $\pp$,
+    \item changing $\alpha$ \textbf{does} change the threshold in $\pp$.
+\end{itemize}
+
+\section{Intuition for $\delta$.}
+
+$\delta$ is the \emph{excess crash rate} of the new version relative to control.
+
+Example:
+\[
+\delta = 0.10\pp = 0.001
+\]
+
+If the new version has $N = 20{,}000$ users in the gate window, the expected excess crashed users relative to control is:
+\[
+\delta \cdot N = 0.001 \cdot 20{,}000 = 20
+\]
+
+So a regression of $0.10\pp$ means about 20 additional crashed users per 20K exposed users, compared with control.
+
+\section{Why exposure gates are needed}
+
+A threshold is useless if the sample is too small to trust the signal. 
+
+Early rollout stages have lower exposure, so they can only reliably catch \emph{larger} regressions. 
+Later stages accumulate enough exposure to enforce \emph{stricter} thresholds.
+
+This is why rollout governance needs both:
+\begin{itemize}[leftmargin=1.4em]
+    \item a \textbf{policy ceiling} derived from error-budget math, and
+    \item an \textbf{exposure gate} derived from detectability.
+\end{itemize}
+
+\subsection{Detectability rule of thumb}
+
+For planning purposes, use the approximate 95\% confidence margin of error for a proportion:
+\[
+m \approx 1.96 \sqrt{\frac{p(1-p)}{N}}
+\qquad \Longleftrightarrow \qquad
+N \approx \frac{1.96^2 p(1-p)}{m^2}
+\]
+
+In this framework:
+\begin{itemize}[leftmargin=1.4em]
+    \item use $p \approx E$, crashed users rate, i.e. near the SLO floor;
+    \item use $m$ equal to the stage's $\dhalt$.
+\end{itemize}
+
+For $S = 99\%$, we use $p \approx 0.01$ as the planning point.
+
+\paragraph{Why use $m = \dhalt$?}
+Because $N_{min}$ is meant to answer a practical question:
+
+\begin{quote}
+``How many exposed users do we need before a regression large enough to justify \textbf{HALT} is distinguishable from normal sampling noise?''
+\end{quote}
+
+So we use the halt threshold itself as the planning margin:
+\[
+m = \dhalt
+\]
+
+This should be read as a \emph{detectability heuristic}, not as a formal proof. 
+It means we size the exposure gate so that a regression at the HALT boundary is large enough to act on with reasonable confidence.
+
+For example, if
+\[
+\dhalt = 0.20\pp = 0.002
+\]
+then over $N = 10{,}000$ exposed users, that corresponds to:
+\[
+0.002 \cdot 10{,}000 = 20
+\]
+excess crashed users relative to control.
+
+So a halt threshold of $0.20\pp$ can be interpreted operationally as:
+\begin{quote}
+``At this exposure, a HALT-level regression means about 20 additional crashed users per 10K exposed users.''
+\end{quote}
+
+\paragraph{Why use $p \approx \E = 1\%$?}
+Because $1\%$ is the error-rate boundary implied by the SLO:
+\[
+S = 99\%
+\qquad \Longrightarrow \qquad
+\E = 1 - S = 1\%
+\]
+
+The purpose of $p$ in the sample-size formula is not to assert the app is ``actually'' running at exactly $1\%$ crash rate.
+It is to choose a \emph{planning point} near the operational boundary that matters most:
+the SLO floor.
+
+In other words, we ask:
+\begin{quote}
+``How much exposure would we want if the app were performing near the SLO boundary and we wanted to detect a HALT-sized regression?''
+\end{quote}
+
+That gives a conservative and policy-aligned exposure gate.
+
+\paragraph{Example: same $\delta$, same incremental harm per $N$}
+A key property of $\delta$ is that, for a fixed exposure $N$, it always maps to the same number of \emph{additional} crashed users, regardless of the starting baseline.
+
+Let $N = 10{,}000$ and let
+\[
+\delta = 0.20\pp = 0.002
+\]
+
+\textbf{Case 1: control CFU $= 99.0\%$} \\
+Then control crash rate is $p_{\text{control}} = 1.0\% = 0.01$:
+\[
+0.01 \cdot 10{,}000 = 100 \text{ crashed users }
+\]
+If the new version regresses by $0.20\pp$, then:
+\[
+p_{\text{new}} = 1.2\% = 0.012
+\]
+\[
+0.012 \cdot 10{,}000 = 120 \text{ crashed users }
+\]
+Difference:
+\[
+120 - 100 = 20
+\]
+
+\textbf{Case 2: control CFU $= 99.5\%$}\\
+Then control crash rate is $p_{\text{control}} = 0.5\% = 0.005$:
+\[
+0.005 \cdot 10{,}000 = 50 \text{ crashed users}
+\]
+If the version regresses by the same $0.20\pp$, then:
+\[
+p_{\text{new}} = 0.7\% = 0.007
+\]
+\[
+0.007 \cdot 10{,}000 = 70 \text{ crashed users}
+\]
+Difference:
+\[
+70 - 50 = 20
+\]
+
+So the operational meaning of $\delta$ is stable:
+\begin{quote}
+For every 10K exposed users, a regression of $0.20\pp$ means about 20 extra crashed users relative to control, regardless of whether the baseline CFU was $99.0\%$ or $99.5\%$. 
+\end{quote}
+
+\paragraph{Example: why $p = 1\%$ is a conservative planning point}
+Using the approximate 95\% margin-of-error formula
+\[
+N \approx \frac{1.96^2 p(1-p)}{m^2}
+\]
+with
+\[
+m = 0.20\pp = 0.002
+\]
+gives:
+
+\textbf{If $p = 1.0\%$}
+\[
+N \approx \frac{1.96^2 \cdot 0.01 \cdot 0.99}{0.002^2}
+\approx 9{,}508
+\]
+which rounds to about $10K$.
+
+\text{If $p$ were chosen $p = 0.5\%$:}
+\[
+N \approx \frac{1.96^2 \cdot 0.005 \cdot 0.995}{0.002^2}
+\approx 4{,}776
+\]
+
+So using $p = 1\%$ requires more exposure than using $p = 0.5\%$.
+That is why $p = \E = 1\%$ is a reasonable planning choice: it anchors the gate near the SLO boundary and avoids underestimating the exposure needed to trust a HALT-level signal.
+
+\paragraph{Operational meaning of $N_{\min}$.}
+$N_{\min}$ is a \emph{practical gating heuristic}, not a formal proof that the release is safe.
+It answers:
+\begin{quote}
+``Do we have enough new-version exposure to trust a signal large enough to justify \textbf{HALT}?''
+\end{quote}
+
+It is intentionally tied to $\dhalt$, not to $\dhold$. 
+That is why the hold band can be stricter than what $N_{\min}$ alone fully resolves:
+\textbf{HOLD} is a softer precautionary action than \textbf{HALT}.
+
+
+\section{Decision framework}
+
+We define three actions:
+
+\begin{itemize}[leftmargin=1.4em]
+    \item \textbf{HALT}: stop rollout progression immediately.
+    \item \textbf{HOLD}: remain at the current rollout state and continue observing; assign an owner to issues.
+    \item \textbf{RAMP}: continue to the next rollout stage.
+\end{itemize}
+
+The design intent is:
+
+\begin{itemize}[leftmargin=1.4em]
+    \item early stages mainly catch \emph{large} regresions,
+    \item later stages enforce \emph{tighter} regression limits,
+    \item no stage may tolerate a regression that violates the global budget ceiling.
+\end{itemize}
+
+\paragraph{Hard requirements for the thresholds.}
+For each stage:
+\begin{enumerate}[leftmargin=1.4em]
+    \item $\dhalt$ must not exceed the global ceiling implied by the \textbf{governance rule}.
+    \item $N_{\min}$ must be feasible within the observation window for that stage under normal traffic.
+\end{enumerate}
+
+\section{Decision matrix}
+
+\begin{table}[h]
+    \centering
+    \small
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabular}{@{}r c c c@{}}
+        \toprule
+        \textbf{Rollout stage} &
+        \textbf{\(N_{\min}\) (new-version users in last 6h)} &
+        \textbf{\(\delta_{\text{hold}}\)} &
+        \textbf{\(\delta_{\text{halt}}\)} \\
+        \midrule
+        1\%   & 10K  & 0.10\pp & 0.20\pp \\
+        2\%   & 10K  & 0.10\pp & 0.20\pp \\
+        5\%   & 10K  & 0.10\pp & 0.20\pp \\
+        10\%  & 20K  & 0.10\pp & 0.20\pp \\
+        20\%  & 50K  & 0.05\pp & 0.10\pp \\
+        50\%  & 100K & 0.05\pp & 0.10\pp \\
+        100\% & 100K & 0.05\pp & 0.10\pp \\
+        \bottomrule
+    \end{tabular}
+
+    \vspace{0.3em}
+    \parbox{0.92\linewidth}{\footnotesize
+    \textit{Decision rule once \(N_{\min}\) is met:}
+    RAMP if \(\delta < \delta_{\text{hold}}\);
+    HOLD if \(\delta_{\text{hold}} \le \delta < \delta_{\text{halt}}\);
+    HALT if \(\delta \ge \delta_{\text{halt}}\).
+    At 100\% rollout, ``RAMP'' means ``continue rollout / do not trigger rollback based on this gate''.
+    }
+\end{table}
+
+\paragraph{Interpretation.}
+The table intentionally uses:
+\begin{itemize}[leftmargin=1.4em]
+    \item \textbf{looser thresholds} at low rollout, where exposure is limited;
+    \item \textbf{stricter thresholds} at higher rollout, where both confidence and potential customer har are greater. 
+\end{itemize}
+
+\paragraph{Note on $N_{\min}$.}
+$N_{\min}$ is chosen to make $\dhalt$-level signals credible enough to act on.
+It is \emph{not} claiming equal statistical resolution for $\dhold$.
+
+\section{Worked example}
+
+Suppose:
+\begin{itemize}[leftmargin=1.4em]
+    \item rollout stage $= 5\%$,
+    \item new-version users in last 6h $= 15K$,
+    \item observed regression $= 0.04\pp$.s
+\end{itemize}
+
+From the table:
+
+\begin{itemize}[leftmargin=1.4em]
+    \item $N_{\min} = 10K$ \quad (met),
+    \item $\dhold = 0.10\pp$,
+    \item $\dhalt = 0.20\pp$.
+\end{itemize}
+
+Since
+\[
+0.04\pp < 0.10\pp
+\]
+the decision is:
+\[
+\textbf{RAMP}
+\]
+
+\section{What changes when app scale changes?}
+
+\subsection{Changing $\MAU$}
+
+A larger $\MAU$ does \emph{not} change the thresholds expressed in $\pp$. 
+It only changes how quickly the app can accumulate the required exposure in a fixed gate
+window.
+
+So if another app has much higher traffic, it may be able to:
+\begin{itemize}[leftmargin=1.4em]
+    \item keep the same governance thresholds, but
+    \item shorten the gate window from 6h to 3h or 2h because it reaches $N_{\min}$
+    faster.
+\end{itemize}
+
+This is an \emph{exposure-speed} difference, not a policy difference.
+
+\subsection{Changing governance strictness}
+
+Is a different app chooses a stricter rule such as:
+\[
+\alpha = 10\%
+\]
+then the global ceiling becomes:
+\[
+\delta_{\max} = 0.10 \cdot \E
+\]
+
+For $S = 99\%$, that would mean:
+\[
+\delta_{\max} = 0.10\pp
+\]
+
+That is a \textbf{governance choice}, not something forced by higher traffic.
+
+\subsection{Changing the SLO}
+
+If the SLO changes, the thresholds in $\pp$ must be recomputed because:
+\[
+\delta_{\max} = \alpha \cdot (1 - S)
+\]
+
+Example:
+\begin{itemize}[leftmargin=1.4em]
+    \item if $S = 99\%$, then $\delta_{\max} = 0.20\pp$,
+    \item if $S = 99.5\%$, then $\delta_{\max} = 0.10\pp$,
+\end{itemize}
+assuming the same $\alpha = 20\%$.
+
+So the table is portable across apps with different $\MAU$, but \emph{not automatically across different SLO targets}
+
+\section{Release policy}
+
+At each rollout stage, using the 6h gate window:
+
+\begin{enumerate}[leftmargin=1.8em]
+    \item If blocker crash affects a critical journey (for example strtup, login, checkout, cart) with impact $\ge 5$ users, assign owner and investigate immediately $\rightarrow$ \textbf{HALT}. Incident / hotfix process follows separately.
+    \item If $\texttt{users\_new\_6h} < N_{\min}(\text{stage})$, $\rightarrow$ \textbf{HOLD}.\\
+    No decision to ramp is allowed before the exposure gate is met.
+    \item Compute $\delta$ against control over \emph{same} 6h window.
+    \item If $\delta \ge \dhalt$, $\rightarrow$ \textbf{HALT}.
+    \item Else if $\delta \ge \dhold$, $\rightarrow$ \textbf{HOLD}.
+    \item Else $\rightarrow$ \textbf{RAMP}.
+\end{enumerate}
+
+\section{Low remaining budget}
+
+If the remaining monthly budget is already low, the normal thresholds may be too permissive.
+
+The mathematically correct ceiling is:
+\[
+\delta_{\max,\mathrm{effective}} = \min\left(\alpha \cdot \E, \frac{\EB_{\mathrm{rem}}}{\MAU}\right)
+\]
+
+This says:
+\begin{quote}
+the release must not be allowed to project beyond either the normal per-release budget cap or the budget that is actually left.
+\end{quote}
+
+\paragraph{Simple operational rule.}
+As a practical simplication, if
+\[
+\EB_{\mathrm{rem}} < 20\% \cdot \EB
+\]
+then tighten all stages to:
+\[
+\dhold = 0.05\pp,
+\qquad
+\dhalt = 0.10\pp
+\]
+
+This simplification is conservative, but it is still only a simplification. 
+If the remaining budget is extremely low, the dynamic ceiling above should take precedence.
+
+\section{Observation window}
+
+The recommended enforcement window is 6 hours because it is practical compromise between:
+\begin{itemize}[leftmargin=1.8em]
+    \item catching regressions early enough to limit harm, and
+    \item giving the release enough time to accumulate the exposure required by the gate.
+\end{itemize}
+
+Apps with higher traffic may shorten this window if they still hit $N_{\min}$ reliably.
+Apps with lower trafic may need a longer gate window.
+
+\section*{References}
+
+\begin{itemize}[leftmargin=1.4em]
+    \item Defining SLOs: \href{Defining SLOs}{https://sre.google/workbook/implementing-slos/}
+    \item Alerting on SLOs: \href{Alerting on SLOs}{https://sre.google/workbook/alerting-on-slos/}
+\end{itemize}
 
 \end{document}
