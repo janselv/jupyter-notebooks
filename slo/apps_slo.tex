@@ -419,6 +419,55 @@ The table intentionally uses:
 $N_{\min}$ is chosen to make $\dhalt$-level signals credible enough to act on.
 It is \emph{not} claiming equal statistical resolution for $\dhold$.
 
+\subsection{Dominant crash issue safeguard}
+
+A frequent concern is: \emph{``Could we miss a bad release because we did not notice a crash that grows beyond 100+ crashed users?''}
+If rollout governance were based on an absolute crashed-user count, that risk would be real. In this framework we gate on $\delta$ because absolute counts are meaningless without exposure.
+
+\paragraph{Example: 100 crashed users may be acceptable at high exposure.}
+Suppose the new version has $N=200{,}000$ users in the last 6 hours at 5\% rollout, and we observe $C=100$ crashed users.
+Then:
+\[
+\delta = \frac{100}{200{,}000} = 0.0005 = 0.05\pp
+\]
+A crash rate increase of $0.05\pp$ is \emph{far below} $\dhold$ and $\dhalt$ for 5\% stage and it will be flagged as acceptable.
+This is expected as-per framework: at large exposure, an absolute count like ``100'' can correspond to a small rate.
+
+Notice that if $N=10{,}000$ users instead, the regression would have been caught as:
+\[
+\delta = \frac{100}{10{,}000} = 0.01 = 1\pp
+\]
+Which is \emph{way above} $\dhalt$ for 5\% rollout.
+
+\paragraph{Why this matters.}
+Pure $\delta$ gating can appear to ``miss'' a large absolute count, simply because the count corresponds to a small rate at scale.
+This is correct behavior for an error-budget framework.
+
+\begin{quote}
+``Reducing exposure through reduction of the observation window also increases the likelihood of catching disastrous crashes''
+\end{quote}
+
+\paragraph{Guardrail: dominant single crash issue.}
+However, a \emph{single} new/regressed crash signature impacting may users can be unacceptable even when the overall $\delta$
+is below the $\dhold$ and $\dhalt$ bands (e.g.\ because the regression is concentrated into one issue).
+To prevent ``averages hiding a disaster'', apply the following additional gates
+on \emph{per-issue impacted users}
+for the new version in the same gate window:
+
+\begin{itemize}
+    \item \textbf{HOLD} if any single \emph{new/regressed} crash issue impacts
+    \[
+    \ge \max\bigl(20,\;0.02\% \cdot N\bigr)
+    \]
+    \item \textbf{HALT} if any single \emph{new/regressed} crash issue impacts
+    \[
+    \ge \max\bigl(50,\;0.05\% \cdot N\bigr)
+    \]
+\end{itemize}
+
+These thresholds scale with exposure (so they remain meaningful at high traffic)
+while reaching absolute floors (to avoid noisy decision at low exposure). Blocker crashes on critical journeys (startup/login/checkout) remain a separate, stricter rule and may HALT at much lower impacted-user counts.
+
 \section{Worked example}
 
 Suppose:
@@ -449,7 +498,7 @@ the decision is:
 
 \subsection{Changing $\MAU$}
 
-A larger $\MAU$ does \emph{not} change the thresholds expressed in $\pp$. 
+A larger $\MAU$ does \emph{not} change the thresholds expressed in $\pp$.
 It only changes how quickly the app can accumulate the required exposure in a fixed gate
 window.
 
@@ -536,7 +585,7 @@ then tighten all stages to:
 \dhalt = 0.10\pp
 \]
 
-This simplification is conservative, but it is still only a simplification. 
+This simplification is conservative, but it is still only a simplification.
 If the remaining budget is extremely low, the dynamic ceiling above should take precedence.
 
 \section{Observation window}
@@ -552,7 +601,7 @@ Apps with lower trafic may need a longer gate window.
 
 % -------------------------------- APPENDIX -----------------------------------
 
-\pagebreak 
+\pagebreak
 
 \section*{Appendix: Burn rate framing}
 
