@@ -550,7 +550,52 @@ The recommended enforcement window is 6 hours because it is practical compromise
 Apps with higher traffic may shorten this window if they still hit $N_{\min}$ reliably.
 Apps with lower trafic may need a longer gate window.
 
-\section*{References}
+\section*{Appendix: Burn rate framing}
+
+Shows how \emph{incremental regression} relates to \emph{burn rate}
+
+\subsection*{Classic burn rate}
+Allowed error rate: $E = 1 - S$.
+
+Observed error rate in a window: $\delta$.
+
+Burn rate:
+\[
+\mathrm{BR} = \frac{\delta}{e}
+\]
+
+\subsection*{Release regression burn rate (full rollout)}
+
+\[
+\mathrm{BR}_{\text{reg,100\%}} = \frac{\delta}{e}
+\]
+
+This is the same quantity as $\texttt{BudgetShare}$ above.
+
+\subsection*{Stage-aware burn rate (what you use during rollout)}
+At rollout stage, only a fraction $f$ (stage \%) of traffic is on the new version. The current incremental burn rate on the whole population is:
+\[
+\mathrm{BR}_{\text{stage}} = \frac{f \cdot \delta}{e}
+\]
+
+Example: $f=0.1$ (10\% rollout) and $\delta/e=0.1$:
+\[
+\mathrm{BR}_{\text{stage}} = 0.1 \cdot 0.1 = 0.01
+\]
+Meaning: at the current stage the release burns \textbf{1\% of the monthly budget pace} (incrementally).
+
+\subsection*{Time to exhaust remaining budget (optional narrative)}
+Let $r$ be the \emph{remaining budget fraction} (e.g.\ 10\% remaining $\Rightarrow r=0.10$). If the regression persists:
+\[
+T_{\text{exhaust}} \approx \frac{r \cdot 30\text{d}}{\mathrm{BR}_{\text{stage}}}
+\]
+
+This supports the narrative:
+\begin{quote}
+At current regression $\delta$ and rollout fraction $f$, we're burning at $\mathrm{BR}_{\text{stage}}$. If left unchanged, we'll consume the remaining $r$ budget in approximately $T_{\text{exhaust}}$.
+\end{quote}
+
+\section*{Appendix: References}
 
 \begin{itemize}[leftmargin=1.4em]
     \item Defining SLOs: \href{Defining SLOs}{https://sre.google/workbook/implementing-slos/}
