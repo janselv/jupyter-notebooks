@@ -550,7 +550,7 @@ So the table is portable across apps with different $\MAU$, but \emph{not automa
 At each rollout stage, using the 6h gate window:
 
 \begin{enumerate}[leftmargin=1.8em]
-    \item If blocker crash affects a critical journey (for example strtup, login, checkout, cart) with impact $\ge 5$ users, assign owner and investigate immediately $\rightarrow$ \textbf{HALT}. Incident / hotfix process follows separately.
+    \item If blocker crash affects a critical journey (for example startup, login, checkout, cart) with impact $\ge 5$ users, assign owner and investigate immediately $\rightarrow$ \textbf{HALT}. Incident / hotfix process follows separately.
     \item If $\texttt{users\_new\_6h} < N_{\min}(\text{stage})$, $\rightarrow$ \textbf{HOLD}.\\
     No decision to ramp is allowed before the exposure gate is met.
     \item Compute $\delta$ against control over \emph{same} 6h window.
